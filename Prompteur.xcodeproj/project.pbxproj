@@ -1,0 +1,124 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+		CAFE00000000000000000001 = {
+			isa = PBXProject;
+			attributes = {LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700;};
+			buildConfigurationList = CAFE0000000000000000000A;
+			developmentRegion = fr;
+			hasScannedForEncodings = 0;
+			knownRegions = (fr, Base);
+			mainGroup = CAFE00000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CAFE00000000000000000003;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (CAFE00000000000000000005);
+		};
+		CAFE00000000000000000002 = {
+			isa = PBXGroup;
+			children = (CAFE00000000000000000004, CAFE00000000000000000010, CAFE00000000000000000003);
+			sourceTree = "<group>";
+		};
+		CAFE00000000000000000003 = {
+			isa = PBXGroup;
+			children = (CAFE00000000000000000006);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CAFE00000000000000000004 = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		CAFE00000000000000000005 = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CAFE0000000000000000000B;
+			buildPhases = (CAFE00000000000000000007, CAFE00000000000000000008, CAFE00000000000000000009);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (CAFE00000000000000000004);
+			name = Prompteur;
+			productName = Prompteur;
+			productReference = CAFE00000000000000000006;
+			productType = "com.apple.product-type.application";
+		};
+		CAFE00000000000000000006 = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.application;
+			path = Prompteur.app;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		CAFE00000000000000000007 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAFE00000000000000000008 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAFE00000000000000000009 = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAFE0000000000000000000A = {
+			isa = XCConfigurationList;
+			buildConfigurations = (CAFE0000000000000000000C, CAFE0000000000000000000D);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CAFE0000000000000000000B = {
+			isa = XCConfigurationList;
+			buildConfigurations = (CAFE0000000000000000000E, CAFE0000000000000000000F);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CAFE0000000000000000000C = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		CAFE0000000000000000000D = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		CAFE0000000000000000000E = {
+			isa = XCBuildConfiguration;
+			buildSettings = {};
+			baseConfigurationReference = CAFE00000000000000000010;
+			name = Debug;
+		};
+		CAFE0000000000000000000F = {
+			isa = XCBuildConfiguration;
+			buildSettings = {};
+			baseConfigurationReference = CAFE00000000000000000010;
+			name = Release;
+		};
+		CAFE00000000000000000010 = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Prompteur.xcconfig;
+			sourceTree = SOURCE_ROOT;
+		};
+	};
+	rootObject = CAFE00000000000000000001;
+}
