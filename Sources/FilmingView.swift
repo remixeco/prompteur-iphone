@@ -184,17 +184,8 @@ struct FilmingView: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 8) {
-                iconButton(paused ? "Reprendre la prise" : "Suspendre la prise",
-                           symbol: paused ? "play.fill" : "pause.fill") {
-                    togglePause()
-                }
-                .foregroundStyle(paused ? Palette.accent : .white)
-                .disabled(camera.state != .recording && camera.state != .paused)
-
-                iconButton("Revenir au début", symbol: "arrow.counterclockwise") {
-                    follower.reset()
-                }
+            iconButton("Revenir au début", symbol: "arrow.counterclockwise") {
+                follower.reset()
             }
         }
     }
@@ -285,11 +276,13 @@ struct FilmingView: View {
     private var controls: some View {
         VStack(spacing: 9) {
             if cameraReady {
-                HStack {
+                HStack(spacing: 12) {
                     iconButton("Dernière prise", symbol: "film") { showingTake = true }
                         .disabled(busyRecording || camera.latestVideo == nil)
 
                     Spacer()
+
+                    pauseButton
 
                     VStack(spacing: 7) {
                         recordButton
@@ -378,6 +371,26 @@ struct FilmingView: View {
     private static func format(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+
+    /// Le bouton pause, placé juste à côté du bouton d'enregistrement.
+    private var pauseButton: some View {
+        Button {
+            togglePause()
+        } label: {
+            Image(systemName: paused ? "play.fill" : "pause.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(paused ? Palette.background : .white)
+                .frame(width: 66, height: 66)
+                .background(paused ? Palette.accent : Color.black.opacity(0.55), in: .circle)
+                .overlay {
+                    Circle().strokeBorder(.white.opacity(0.6), lineWidth: 2)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(camera.state != .recording && camera.state != .paused)
+        .opacity(camera.state != .recording && camera.state != .paused ? 0.35 : 1)
+        .accessibilityLabel(paused ? "Reprendre la prise" : "Suspendre la prise")
     }
 
     private var recordButton: some View {
