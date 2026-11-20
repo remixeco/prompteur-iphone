@@ -12,6 +12,7 @@ struct FilmingView: View {
     @ScaledMetric(relativeTo: .title2) private var promptHeight = 174.0
     @State private var follower: ScriptFollower
     @State private var followVoice = true
+    @State private var paused = false
     @State private var showingTake = false
     @State private var startedAt: Date?
 
@@ -30,13 +31,13 @@ struct FilmingView: View {
 
     private var busyRecording: Bool {
         switch camera.state {
-        case .startingRecording, .recording, .finishing: true
+        case .startingRecording, .recording, .finishing, .processing: true
         default: false
         }
     }
 
     private var shouldListen: Bool {
-        followVoice && cameraReady && scenePhase != .background && !showingTake
+        followVoice && !paused && cameraReady && scenePhase != .background && !showingTake
     }
 
     var body: some View {
@@ -44,6 +45,14 @@ struct FilmingView: View {
             VStack(spacing: 12) {
                 header
                 prompt(height: min(promptHeight, space.size.height * 0.44))
+                if paused {
+                    Label("Texte en pause. L'enregistrement continue.", systemImage: "pause.circle.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.yellow)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.black.opacity(0.86), in: .capsule)
+                }
                 Spacer(minLength: 4)
                 if let message = camera.errorMessage {
                     notice(message)
@@ -113,7 +122,7 @@ struct FilmingView: View {
         }
         .sheet(isPresented: $showingTake) {
             if let url = camera.latestVideo {
-                TakeView(url: url)
+                TakeView(url: url, note: camera.cutNote)
             }
         }
     }
@@ -130,10 +139,15 @@ struct FilmingView: View {
                     Label("Répétition", systemImage: "text.alignleft")
                 } else if let startedAt {
                     HStack(spacing: 7) {
-                        Circle().fill(.red).frame(width: 8, height: 8)
+                        if paused {
+                            Image(systemName: "pause.fill")
+                                .foregroundStyle(.yellow)
+                        } else {
+                            Circle().fill(.red).frame(width: 8, height: 8)
+                        }
                         Text(startedAt, style: .timer).monospacedDigit()
                     }
-                    .accessibilityLabel("Enregistrement en cours")
+                    .accessibilityLabel(paused ? "En pause, l'enregistrement continue" : "Enregistrement en cours")
                 } else {
                     Label("Caméra avant", systemImage: "camera")
                 }
@@ -145,8 +159,16 @@ struct FilmingView: View {
 
             Spacer(minLength: 0)
 
-            iconButton("Revenir au début", symbol: "arrow.counterclockwise") {
-                follower.reset()
+            HStack(spacing: 8) {
+                iconButton(paused ? "Reprendre le texte" : "Mettre le texte en pause",
+                           symbol: paused ? "play.fill" : "pause.fill") {
+                    paused.toggle()
+                }
+                .foregroundStyle(paused ? Palette.accent : .white)
+
+                iconButton("Revenir au début", symbol: "arrow.counterclockwise") {
+                    follower.reset()
+                }
             }
         }
     }
@@ -307,6 +329,7 @@ struct FilmingView: View {
         case .startingRecording: "Démarrage…"
         case .recording: "Arrêter"
         case .finishing: "Enregistrement…"
+        case .processing: "Montage…"
         default: "Filmer"
         }
     }

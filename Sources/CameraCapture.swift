@@ -6,13 +6,15 @@ import SwiftUI
 @Observable
 final class CameraCapture {
     enum State: Equatable {
-        case idle, starting, ready, startingRecording, recording, finishing
+        case idle, starting, ready, startingRecording, recording, finishing, processing
         case unavailable(String)
     }
 
     private(set) var state: State = .idle
     private(set) var latestVideo: URL?
     private(set) var errorMessage: String?
+    /// Résumé du montage de la dernière prise, quand les blancs ont été coupés.
+    private(set) var cutNote: String?
 
     private let worker: CaptureWorker
     private var wantsCamera = false
@@ -73,6 +75,8 @@ final class CameraCapture {
         switch state {
         case .startingRecording, .recording, .finishing:
             state = .finishing
+        case .processing:
+            break // le montage de la prise se termine, on ne l'interrompt pas
         default:
             state = .idle
         }
@@ -91,22 +95,56 @@ final class CameraCapture {
                     state = .recording
                 }
             case .finished(let file):
-                if let file {
-                    latestVideo = file
-                    UserDefaults.standard.set(file.lastPathComponent, forKey: "latestVideo")
-                } else {
-                    errorMessage = "La vidéo n’a pas pu être enregistrée. Vérifie l’espace libre, puis réessaie."
+                guard let file else {
+                    errorMessage = "La vidéo n'a pas pu être enregistrée. Vérifie l'espace libre, puis réessaie."
+                    settleAfterTake()
+                    return
                 }
-                if wantsCamera {
-                    state = .ready
-                    if !session.isRunning {
-                        state = .idle
-                        Task { if wantsCamera { await start() } }
-                    }
-                } else {
-                    state = .idle
-                }
+                state = .processing
+                Task { await processTake(file) }
             }
+        }
+    }
+
+    /// Monte la prise : coupe les blancs si le réglage est actif, puis la publie.
+    private func processTake(_ file: URL) async {
+        let settings = SilenceSettings.current
+        var final = file
+        var removed: Double = 0
+
+        if settings.isEnabled {
+            do {
+                let outcome = try await SilenceCutter.cutSilences(in: file, settings: settings)
+                final = outcome.url
+                removed = outcome.removedDuration
+            } catch {
+                errorMessage = "Les blancs n'ont pas pu être coupés. La prise brute est conservée telle quelle."
+            }
+        }
+
+        latestVideo = final
+        UserDefaults.standard.set(final.lastPathComponent, forKey: "latestVideo")
+        cutNote = removed > 0 ? Self.describe(removed: removed) : nil
+        settleAfterTake()
+    }
+
+    private static func describe(removed: Double) -> String {
+        let seconds = Int(removed.rounded())
+        if seconds < 60 { return "\(seconds) s de blancs coupés" }
+        let minutes = seconds / 60
+        let rest = seconds % 60
+        return rest == 0 ? "\(minutes) min de blancs coupés" : "\(minutes) min \(rest) s de blancs coupés"
+    }
+
+    private func settleAfterTake() {
+        if wantsCamera {
+            state = .ready
+            if !session.isRunning {
+                state = .idle
+                Task { if wantsCamera { await start() } }
+            }
+        } else {
+            state = .idle
         }
     }
 

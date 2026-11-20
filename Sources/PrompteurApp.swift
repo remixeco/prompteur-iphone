@@ -1,5 +1,6 @@
 import AVKit
 import CoreTransferable
+import Foundation
 import Photos
 import SwiftUI
 import UniformTypeIdentifiers
@@ -43,6 +44,9 @@ private struct ScriptEditor: View {
     """
 
     @AppStorage("script") private var script = Self.example
+    @AppStorage(SilenceSettings.enabledKey) private var cutSilences = false
+    @AppStorage(SilenceSettings.thresholdKey) private var thresholdDB = SilenceRanges.Settings.default.thresholdDB
+    @AppStorage(SilenceSettings.minimumKey) private var minimumSilence = SilenceRanges.Settings.default.minimumSilence
     @FocusState private var editing: Bool
     @State private var filming = false
     @State private var showingTake = false
@@ -83,6 +87,8 @@ private struct ScriptEditor: View {
                 }
 
                 editor
+
+                settingsCard
 
                 if camera.latestVideo != nil {
                     Button {
@@ -136,7 +142,7 @@ private struct ScriptEditor: View {
         }
         .sheet(isPresented: $showingTake) {
             if let url = camera.latestVideo {
-                TakeView(url: url)
+                TakeView(url: url, note: camera.cutNote)
             }
         }
     }
@@ -180,10 +186,80 @@ private struct ScriptEditor: View {
                 .allowsHitTesting(false)
         }
     }
+
+    private var settingsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: $cutSilences) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Couper les blancs", systemImage: "scissors")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Supprime les silences où tu ne parles pas, une fois la prise terminée. La prise brute est toujours conservée à côté.")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Palette.accent)
+
+            if cutSilences {
+                VStack(spacing: 16) {
+                    sliderRow(
+                        title: "Seuil de voix",
+                        value: $thresholdDB,
+                        range: -50 ... -20,
+                        step: 1,
+                        formatted: { "\(Int($0)) dB" },
+                        hint: "Plus la valeur est basse, plus seuls les vrais silences sont coupés."
+                    )
+                    sliderRow(
+                        title: "Durée minimale",
+                        value: $minimumSilence,
+                        range: 0.2 ... 2.0,
+                        step: 0.05,
+                        formatted: { $0.formatted(.number.precision(.fractionLength(2))) + " s" },
+                        hint: "Un silence plus court que cette durée est conservé."
+                    )
+                }
+            }
+        }
+        .padding(18)
+        .background(Palette.surface, in: .rect(cornerRadius: 21))
+        .overlay {
+            RoundedRectangle(cornerRadius: 21)
+                .strokeBorder(.white.opacity(0.10))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func sliderRow(title: String,
+                           value: Binding<Double>,
+                           range: ClosedRange<Double>,
+                           step: Double,
+                           formatted: @escaping (Double) -> String,
+                           hint: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                    .font(.footnote.weight(.semibold))
+                Spacer()
+                Text(formatted(value.wrappedValue))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(Palette.accent)
+            }
+            Slider(value: value, in: range, step: step)
+                .tint(Palette.accent)
+            Text(hint)
+                .font(.caption2)
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }
 
 struct TakeView: View {
     let url: URL
+    var note: String?
+
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer?
     @State private var saving = false
@@ -196,6 +272,14 @@ struct TakeView: View {
                 VideoPlayer(player: player)
                     .background(.black)
                     .clipShape(.rect(cornerRadius: 16))
+
+                if let note {
+                    Label(note, systemImage: "scissors")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Palette.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.center)
+                }
 
                 if let error {
                     Text(error).foregroundStyle(Palette.muted)
