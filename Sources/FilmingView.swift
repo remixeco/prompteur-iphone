@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import SwiftUI
 
 struct FilmingView: View {
@@ -15,6 +16,10 @@ struct FilmingView: View {
     @State private var paused = false
     @State private var showingTake = false
     @State private var startedAt: Date?
+    @State private var elapsedBefore = 0.0
+    @State private var elapsed = 0.0
+
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(script: String, camera: CameraCapture, voice: VoiceRecognizer) {
         self.camera = camera
@@ -24,7 +29,7 @@ struct FilmingView: View {
 
     private var cameraReady: Bool {
         switch camera.state {
-        case .ready, .startingRecording, .recording, .finishing: true
+        case .ready, .startingRecording, .recording, .paused, .finishing: true
         default: false
         }
     }
@@ -36,6 +41,7 @@ struct FilmingView: View {
         }
     }
 
+    /// Le texte suit la voix seulement si la prise n'est pas suspendue.
     private var shouldListen: Bool {
         followVoice && !paused && cameraReady && scenePhase != .background && !showingTake
     }
@@ -46,7 +52,10 @@ struct FilmingView: View {
                 header
                 prompt(height: min(promptHeight, space.size.height * 0.44))
                 if paused {
-                    Label("Texte en pause. L'enregistrement continue.", systemImage: "pause.circle.fill")
+                    Label(camera.state == .paused
+                          ? "En pause. Le texte attend et l'enregistrement est suspendu."
+                          : "Texte en pause. L'enregistrement continue.",
+                          systemImage: "pause.circle.fill")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.yellow)
                         .padding(.horizontal, 14)
@@ -108,11 +117,27 @@ struct FilmingView: View {
             }
         }
         .onChange(of: camera.state) { _, state in
-            if state == .recording {
+            switch state {
+            case .recording:
                 startedAt = Date()
-            } else if state != .finishing {
+            case .paused:
+                if let startedAt {
+                    elapsedBefore += Date().timeIntervalSince(startedAt)
+                }
                 startedAt = nil
+                elapsed = elapsedBefore
+            case .finishing, .processing:
+                break
+            default:
+                startedAt = nil
+                elapsedBefore = 0
+                elapsed = 0
+                paused = false
             }
+        }
+        .onReceive(ticker) { _ in
+            guard let startedAt else { return }
+            elapsed = elapsedBefore + Date().timeIntervalSince(startedAt)
         }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear {
@@ -137,7 +162,7 @@ struct FilmingView: View {
             Group {
                 if case .unavailable = camera.state {
                     Label("Répétition", systemImage: "text.alignleft")
-                } else if let startedAt {
+                } else if startedAt != nil || camera.state == .paused {
                     HStack(spacing: 7) {
                         if paused {
                             Image(systemName: "pause.fill")
@@ -145,9 +170,9 @@ struct FilmingView: View {
                         } else {
                             Circle().fill(.red).frame(width: 8, height: 8)
                         }
-                        Text(startedAt, style: .timer).monospacedDigit()
+                        Text(Self.format(elapsed)).monospacedDigit()
                     }
-                    .accessibilityLabel(paused ? "En pause, l'enregistrement continue" : "Enregistrement en cours")
+                    .accessibilityLabel(paused ? "En pause, l'enregistrement est suspendu" : "Enregistrement en cours")
                 } else {
                     Label("Caméra avant", systemImage: "camera")
                 }
@@ -160,11 +185,12 @@ struct FilmingView: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 8) {
-                iconButton(paused ? "Reprendre le texte" : "Mettre le texte en pause",
+                iconButton(paused ? "Reprendre la prise" : "Suspendre la prise",
                            symbol: paused ? "play.fill" : "pause.fill") {
-                    paused.toggle()
+                    togglePause()
                 }
                 .foregroundStyle(paused ? Palette.accent : .white)
+                .disabled(camera.state != .recording && camera.state != .paused)
 
                 iconButton("Revenir au début", symbol: "arrow.counterclockwise") {
                     follower.reset()
@@ -328,32 +354,53 @@ struct FilmingView: View {
         switch camera.state {
         case .startingRecording: "Démarrage…"
         case .recording: "Arrêter"
+        case .paused: "Arrêter"
         case .finishing: "Enregistrement…"
         case .processing: "Montage…"
         default: "Filmer"
         }
     }
 
+    /// Suspend ou reprend la prise : le texte s'arrête et l'enregistrement avec lui.
+    private func togglePause() {
+        switch camera.state {
+        case .recording:
+            camera.pauseRecording()
+            paused = true
+        case .paused:
+            camera.resumeRecording()
+            paused = false
+        default:
+            break
+        }
+    }
+
+    private static func format(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+
     private var recordButton: some View {
         Button {
-            if camera.state == .recording {
+            if camera.state == .recording || camera.state == .paused {
                 camera.stopRecording()
             } else {
                 camera.startRecording()
             }
         } label: {
+            let isTaking = camera.state == .recording || camera.state == .paused
             ZStack {
                 Circle().fill(.black.opacity(0.55))
                 Circle().strokeBorder(.white, lineWidth: 3)
-                RoundedRectangle(cornerRadius: camera.state == .recording ? 6 : 26)
+                RoundedRectangle(cornerRadius: isTaking ? 6 : 26)
                     .fill(Color(red: 1, green: 0.28, blue: 0.25))
-                    .frame(width: camera.state == .recording ? 25 : 50,
-                           height: camera.state == .recording ? 25 : 50)
+                    .frame(width: isTaking ? 25 : 50,
+                           height: isTaking ? 25 : 50)
             }
             .frame(width: 66, height: 66)
         }
         .buttonStyle(.plain)
-        .disabled(camera.state != .ready && camera.state != .recording)
+        .disabled(camera.state != .ready && camera.state != .recording && camera.state != .paused)
         .accessibilityLabel(recordLabel)
     }
 

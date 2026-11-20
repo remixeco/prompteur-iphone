@@ -6,7 +6,7 @@ import SwiftUI
 @Observable
 final class CameraCapture {
     enum State: Equatable {
-        case idle, starting, ready, startingRecording, recording, finishing, processing
+        case idle, starting, ready, startingRecording, recording, paused, finishing, processing
         case unavailable(String)
     }
 
@@ -15,6 +15,8 @@ final class CameraCapture {
     private(set) var errorMessage: String?
     /// Résumé du montage de la dernière prise, quand les blancs ont été coupés.
     private(set) var cutNote: String?
+    /// Nombre de morceaux dans la prise en cours : 1 tant qu'aucune pause n'a eu lieu.
+    private(set) var segmentCount = 0
 
     private let worker: CaptureWorker
     private var wantsCamera = false
@@ -65,7 +67,7 @@ final class CameraCapture {
 
         worker.start { [weak self] success in
             guard let self, startupID == id, wantsCamera else { return }
-            state = success ? .ready : .unavailable("La caméra n’a pas démarré. Rouvre cet écran pour réessayer.")
+            state = success ? .ready : .unavailable("La caméra n'a pas démarré. Rouvre cet écran pour réessayer.")
         }
     }
 
@@ -74,6 +76,8 @@ final class CameraCapture {
         startupID = UUID()
         switch state {
         case .startingRecording, .recording, .finishing:
+            state = .finishing
+        case .paused:
             state = .finishing
         case .processing:
             break // le montage de la prise se termine, on ne l'interrompt pas
@@ -87,6 +91,7 @@ final class CameraCapture {
         guard state == .ready else { return }
         state = .startingRecording
         errorMessage = nil
+        segmentCount = 0
         worker.record { [weak self] event in
             guard let self else { return }
             switch event {
@@ -94,20 +99,61 @@ final class CameraCapture {
                 if state == .startingRecording {
                     state = .recording
                 }
-            case .finished(let file):
-                guard let file else {
+            case .paused:
+                if state == .recording {
+                    state = .paused
+                }
+            case .resumed:
+                if state == .paused {
+                    state = .recording
+                }
+            case .finished(let segments):
+                guard let segments, !segments.isEmpty else {
                     errorMessage = "La vidéo n'a pas pu être enregistrée. Vérifie l'espace libre, puis réessaie."
                     settleAfterTake()
                     return
                 }
                 state = .processing
-                Task { await processTake(file) }
+                Task { await processTake(segments) }
             }
         }
     }
 
-    /// Monte la prise : coupe les blancs si le réglage est actif, puis la publie.
-    private func processTake(_ file: URL) async {
+    /// Suspend l'enregistrement : le segment en cours est fermé, la prise reste ouverte.
+    func pauseRecording() {
+        guard state == .recording else { return }
+        state = .paused
+        worker.pause()
+    }
+
+    /// Reprend l'enregistrement dans la même prise : un nouveau segment s'ouvre.
+    func resumeRecording() {
+        guard state == .paused else { return }
+        state = .recording
+        worker.resume()
+    }
+
+    func stopRecording() {
+        guard state == .recording || state == .paused else { return }
+        state = .finishing
+        worker.finish()
+    }
+
+    /// Assemble les morceaux de la prise, puis coupe les blancs si le réglage est actif.
+    private func processTake(_ segments: [URL]) async {
+        var file: URL
+
+        do {
+            let folder = try CaptureWorker.takesFolder()
+            file = try await VideoSegments.merge(segments, into: VideoSegments.mergedURL(folder: folder))
+            for segment in segments {
+                try? FileManager.default.removeItem(at: segment)
+            }
+        } catch {
+            file = segments[0]
+            errorMessage = "La prise n'a pas pu être assemblée. La version sans pause est conservée."
+        }
+
         let settings = SilenceSettings.current
         var final = file
         var removed: Double = 0
@@ -147,19 +193,19 @@ final class CameraCapture {
             state = .idle
         }
     }
-
-    func stopRecording() {
-        guard state == .recording else { return }
-        state = .finishing
-        worker.stopRecording()
-    }
 }
 
 private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate,
                                    AVCaptureFileOutputRecordingDelegate, @unchecked Sendable {
     enum RecordingEvent: Sendable {
         case started
-        case finished(URL?)
+        case paused
+        case resumed
+        case finished([URL]?)
+    }
+
+    private enum Mode {
+        case idle, recording, paused, finishing
     }
 
     let session = AVCaptureSession()
@@ -173,6 +219,8 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
     private var configured = false
     private var wantsSession = false
     private var recording: (@MainActor @Sendable (RecordingEvent) -> Void)?
+    private var mode: Mode = .idle
+    private var segments: [URL] = []
 
     init(onAudio: @escaping @Sendable (CMSampleBuffer) -> Void) {
         self.onAudio = onAudio
@@ -202,6 +250,7 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         queue.async {
             self.wantsSession = false
             if self.movie.isRecording {
+                self.mode = .finishing
                 self.movie.stopRecording()
             } else if self.recording == nil, self.session.isRunning {
                 self.session.stopRunning()
@@ -209,6 +258,7 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         }
     }
 
+    /// Ouvre la prise : un premier segment est écrit.
     func record(completion: @escaping @MainActor @Sendable (RecordingEvent) -> Void) {
         queue.async {
             guard self.session.isRunning,
@@ -220,18 +270,60 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
                 return
             }
 
-            let file = folder.appendingPathComponent("Prise-\(UUID().uuidString).mov")
+            self.segments = []
             self.recording = completion
-            self.movie.startRecording(to: file, recordingDelegate: self)
+            self.mode = .recording
+            self.startSegment(in: folder)
         }
     }
 
-    func stopRecording() {
+    /// Ferme le segment en cours sans clore la prise.
+    func pause() {
         queue.async {
+            guard self.mode == .recording, self.movie.isRecording else { return }
+            self.mode = .paused
+            self.movie.stopRecording()
+        }
+    }
+
+    /// Ouvre un nouveau segment : la reprise reste dans la même prise.
+    func resume() {
+        queue.async {
+            guard self.mode == .paused, self.session.isRunning,
+                  let folder = try? Self.takesFolder() else { return }
+            self.mode = .recording
+            self.startSegment(in: folder)
+        }
+    }
+
+    /// Clôt la prise : le dernier segment est fermé, les morceaux sont rendus.
+    func finish() {
+        queue.async {
+            guard self.mode == .recording || self.mode == .paused else { return }
+            self.mode = .finishing
             if self.movie.isRecording {
                 self.movie.stopRecording()
+            } else {
+                self.closeTake()
             }
         }
+    }
+
+    private func startSegment(in folder: URL) {
+        let file = folder.appendingPathComponent("Morceau-\(UUID().uuidString).mov")
+        movie.startRecording(to: file, recordingDelegate: self)
+    }
+
+    private func closeTake() {
+        let callback = recording
+        recording = nil
+        let files = segments
+        segments = []
+        mode = .idle
+        if !wantsSession, session.isRunning {
+            session.stopRunning()
+        }
+        DispatchQueue.main.async { callback?(.finished(files)) }
     }
 
     private func configure() throws {
@@ -285,9 +377,9 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL,
                     from connections: [AVCaptureConnection]) {
         queue.async {
-            if let callback = self.recording {
-                DispatchQueue.main.async { callback(.started) }
-            }
+            guard let callback = self.recording else { return }
+            let event: RecordingEvent = self.segments.isEmpty ? .started : .resumed
+            DispatchQueue.main.async { callback(event) }
             if !self.wantsSession, self.movie.isRecording {
                 self.movie.stopRecording()
             }
@@ -296,18 +388,23 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
 
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL,
                     from connections: [AVCaptureConnection], error: (any Error)?) {
-        let validMovie = error == nil || (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
         queue.async {
-            let callback = self.recording
-            self.recording = nil
-            if !self.wantsSession, self.session.isRunning {
-                self.session.stopRunning()
-            }
-            if !validMovie {
+            let validMovie = error == nil || (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+            if validMovie {
+                self.segments.append(outputFileURL)
+            } else {
                 try? FileManager.default.removeItem(at: outputFileURL)
             }
-            if let callback {
-                DispatchQueue.main.async { callback(.finished(validMovie ? outputFileURL : nil)) }
+
+            switch self.mode {
+            case .paused:
+                if let callback = self.recording {
+                    DispatchQueue.main.async { callback(.paused) }
+                }
+            case .finishing:
+                self.closeTake()
+            default:
+                break
             }
         }
     }

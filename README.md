@@ -15,17 +15,21 @@ App iPhone en français pour se filmer avec la caméra avant. Le texte apparaît
 3. Touche **Filmer** et lis le texte. Si tu fais une pause, le texte t’attend. Si tu sautes un passage, tu peux te recaler avec les flèches.
 4. Touche **Arrêter** puis ouvre **Dernière prise** pour regarder la vidéo, la partager ou l’ajouter à Photos. Les prises sont aussi accessibles dans **Fichiers → Sur mon iPhone → Prompteur → Prises**.
 
-## Mettre le texte en pause pendant la prise
+## Suspendre et reprendre la prise
 
-Le bouton **pause**, en haut à droite de l’écran de tournage, gèle le texte sans arrêter la caméra. L’enregistrement continue exactement comme avant : la prise n’est ni coupée ni interrompue. Un bandeau jaune indique que le texte est en pause, et le même bouton reprend le suivi.
+Le bouton **pause**, en haut à droite de l’écran de tournage, suspend **le texte et l’enregistrement**. Le texte se fige, la capture s’arrête, et le bandeau jaune « En pause. Le texte attend et l’enregistrement est suspendu. » le signale. Le chronomètre se fige aussi : il ne compte que le temps réellement filmé.
 
-C’est utile quand tu dois t’interrompre — une interruption, une toux, un bruit — sans perdre la prise ni la recommencer.
+Quand tu relances, le texte repart au mot près et l’enregistrement reprend **dans la même prise**. La capture est écrite par morceaux : chaque pause ferme le morceau en cours et en ouvre un autre. À la fin, les morceaux sont recollés dans l’ordre en un seul fichier, sans trou et sans coupure visible.
+
+C’est utile quand tu dois t’interrompre — une interruption, une toux, un bruit — sans perdre la prise ni la recommencer. Comme la capture est réellement suspendue, ce moment n’existe pas dans la vidéo : il n’y a rien à couper derrière.
 
 ## Couper les blancs
 
 L’option **Couper les blancs**, sous le script, supprime de la vidéo les silences où tu ne parles pas. Elle est désactivée par défaut.
 
 Quand elle est active, la prise est montée à la fin du tournage : les moments trop courts pour être des blancs sont conservés, et une petite marge est gardée autour de la voix pour que les coupes ne claquent pas. La prise brute est toujours conservée à côté, sous le nom `…-brute.mov`, et la version montée sous `…-montée.mov`. La fiche de la prise affiche le temps retiré.
+
+Les morceaux de la prise sont d’abord recollés en un fichier unique, ensuite les blancs sont retirés. Le montage ne touche jamais à l’image.
 
 Deux réglages ajustent le comportement :
 
