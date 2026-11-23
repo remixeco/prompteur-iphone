@@ -10,7 +10,7 @@ App iPhone en français pour se filmer avec la caméra avant. Le texte apparaît
 
 ## Tourner une vidéo
 
-1. Remplace le script d’exemple par ton texte et touche **Ouvrir la caméra**.
+1. Remplace le script d’exemple par ton texte et touche **Ouvrir la caméra**. Le bouton **Tout effacer**, en haut de la carte du texte, vide tout le script d’un geste après confirmation.
 2. Autorise la caméra et le micro. Attends le statut **À l’écoute** avant de lire. Au premier lancement, iOS peut demander du temps et une connexion pour télécharger le modèle de reconnaissance du français. La reconnaissance s’exécute ensuite sur l’iPhone.
 3. Touche **Filmer** et lis le texte. Si tu fais une pause, le texte t’attend. Si tu sautes un passage, tu peux te recaler avec les flèches.
 4. Touche **Arrêter** puis ouvre **Dernière prise** pour regarder la vidéo, la partager ou l’ajouter à Photos. Les prises sont aussi accessibles dans **Fichiers → Sur mon iPhone → Prompteur → Prises**.
