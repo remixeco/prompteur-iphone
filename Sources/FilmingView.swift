@@ -274,68 +274,85 @@ struct FilmingView: View {
     }
 
     private var controls: some View {
-        VStack(spacing: 9) {
+        VStack(spacing: 10) {
             if cameraReady {
-                HStack(spacing: 12) {
-                    iconButton("Dernière prise", symbol: "film") { showingTake = true }
-                        .disabled(busyRecording || camera.latestVideo == nil)
+                ZStack(alignment: .bottom) {
+                    HStack(alignment: .bottom) {
+                        takesAndScroll
+                        Spacer(minLength: 8)
+                        voiceButton
+                    }
 
-                    Spacer()
-
-                    pauseButton
-
-                    VStack(spacing: 7) {
+                    HStack(spacing: 14) {
+                        pauseButton
                         recordButton
-                        Text(recordLabel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(.black.opacity(0.72), in: .capsule)
-                            .accessibilityHidden(true)
+                        // Miroir invisible : garde l'enregistrement au centre exact.
+                        Color.clear.frame(width: 66, height: 66)
                     }
-
-                    Spacer()
-
-                    iconButton(followVoice ? "Mettre le suivi vocal en pause" : "Activer le suivi vocal",
-                               symbol: followVoice ? "waveform" : "mic.slash") {
-                        if followVoice, case .failed = voice.status {
-                            Task { await startListening() }
-                        } else {
-                            followVoice.toggle()
-                        }
-                    }
-                    .accessibilityLabel(voiceRetryLabel)
-                    .foregroundStyle(followVoice ? Palette.accent : .white)
                 }
+                .padding(.bottom, 22)
             } else if camera.state == .starting || camera.state == .idle {
                 ProgressView("Ouverture de la caméra…")
                     .font(.footnote)
             }
-
-            HStack(spacing: 10) {
-                Button {
-                    follower.seek(toLine: follower.activeLine - 1)
-                } label: {
-                    Image(systemName: "chevron.up")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .accessibilityLabel("Passage précédent")
-                .disabled(follower.activeLine == 0)
-
-                Button {
-                    follower.seek(toLine: follower.activeLine + 1)
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .accessibilityLabel("Passage suivant")
-                .disabled(follower.isFinished)
-            }
-            .buttonStyle(.bordered)
-            .tint(.white)
-            .background(.black.opacity(0.62), in: .rect(cornerRadius: 12))
         }
+    }
+
+    /// Les anciennes prises, avec le défilement manuel juste au-dessus.
+    private var takesAndScroll: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            scrollButtons
+            iconButton("Dernière prise", symbol: "film") { showingTake = true }
+                .disabled(busyRecording || camera.latestVideo == nil)
+        }
+    }
+
+    private var voiceButton: some View {
+        iconButton(followVoice ? "Mettre le suivi vocal en pause" : "Activer le suivi vocal",
+                   symbol: followVoice ? "waveform" : "mic.slash") {
+            if followVoice, case .failed = voice.status {
+                Task { await startListening() }
+            } else {
+                followVoice.toggle()
+            }
+        }
+        .accessibilityLabel(voiceRetryLabel)
+        .foregroundStyle(followVoice ? Palette.accent : .white)
+    }
+
+    /// Monter ou descendre dans le texte : une pastille discrète, sans dalle noire.
+    private var scrollButtons: some View {
+        VStack(spacing: 0) {
+            scrollStep(up: true)
+            Capsule()
+                .fill(.white.opacity(0.18))
+                .frame(width: 18, height: 1)
+            scrollStep(up: false)
+        }
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: 22))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func scrollStep(up: Bool) -> some View {
+        let disabled = up ? follower.activeLine == 0 : follower.isFinished
+        return Button {
+            follower.seek(toLine: up ? follower.activeLine - 1 : follower.activeLine + 1)
+        } label: {
+            Image(systemName: up ? "chevron.up" : "chevron.down")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 36)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.35 : 1)
+        .accessibilityLabel(up ? "Passage précédent" : "Passage suivant")
     }
 
     private var voiceRetryLabel: String {
@@ -414,6 +431,17 @@ struct FilmingView: View {
         }
         .buttonStyle(.plain)
         .disabled(camera.state != .ready && camera.state != .recording && camera.state != .paused)
+        .overlay(alignment: .bottom) {
+            Text(recordLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(.black.opacity(0.72), in: .capsule)
+                .fixedSize()
+                .offset(y: 26)
+                .accessibilityHidden(true)
+        }
         .accessibilityLabel(recordLabel)
     }
 
