@@ -17,7 +17,7 @@ App iPhone en français pour se filmer avec la caméra avant. Le texte apparaît
 
 ## Suspendre et reprendre la prise
 
-Le bouton **pause**, juste à côté du bouton d’enregistrement, suspend **le texte et l’enregistrement**. Le texte se fige, la capture s’arrête, et le bandeau jaune « En pause. Le texte attend et l’enregistrement est suspendu. » le signale. Le chronomètre se fige aussi : il ne compte que le temps réellement filmé.
+Le bouton **pause**, à droite du bouton d’enregistrement, suspend **le texte et l’enregistrement**. Le texte se fige, la capture s’arrête, et le bandeau jaune « En pause. Le texte attend et l’enregistrement est suspendu. » le signale. Le chronomètre se fige aussi : il ne compte que le temps réellement filmé.
 
 Quand tu relances, le texte repart au mot près et l’enregistrement reprend **dans la même prise**. La capture est écrite par morceaux : chaque pause ferme le morceau en cours et en ouvre un autre. À la fin, les morceaux sont recollés dans l’ordre en un seul fichier, sans trou et sans coupure visible.
 
