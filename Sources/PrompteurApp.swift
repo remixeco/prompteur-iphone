@@ -40,6 +40,7 @@ private struct ScriptEditor: View {
     """
 
     @AppStorage("script") private var script = Self.example
+    @AppStorage("promptFontScale") private var fontScale = 1.0
     @AppStorage(SilenceSettings.enabledKey) private var cutSilences = false
     @AppStorage(SilenceSettings.thresholdKey) private var thresholdDB = SilenceRanges.Settings.default.thresholdDB
     @AppStorage(SilenceSettings.minimumKey) private var minimumSilence = SilenceRanges.Settings.default.minimumSilence
@@ -201,6 +202,21 @@ private struct ScriptEditor: View {
 
     private var settingsCard: some View {
         VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Taille du texte", systemImage: "textformat.size")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Taille du texte", selection: $fontScale) {
+                    Text("Petite").tag(0.88)
+                    Text("Moyenne").tag(1.0)
+                    Text("Grande").tag(1.16)
+                }
+                .pickerStyle(.segmented)
+                Text("La taille du texte affiché pendant que tu filmes.")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Toggle(isOn: $cutSilences) {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Couper les blancs", systemImage: "scissors")

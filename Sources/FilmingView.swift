@@ -11,12 +11,18 @@ struct FilmingView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .title2) private var promptHeight = 174.0
+    @ScaledMetric(relativeTo: .title2) private var baseFontSize = 22.0
+    @AppStorage("promptFontScale") private var fontScale = 1.0
     @State private var follower: ScriptFollower
     @State private var followVoice = true
     @State private var paused = false
     @State private var startedAt: Date?
     @State private var elapsedBefore = 0.0
     @State private var elapsed = 0.0
+    /// Position de chaque ligne dans le texte, mesurée pour caler la lecture.
+    @State private var lineOffsets: [Int: CGFloat] = [:]
+    /// Décalage manuel pendant un glissement du doigt.
+    @State private var dragOffset: CGFloat = 0
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -49,7 +55,7 @@ struct FilmingView: View {
         GeometryReader { space in
             VStack(spacing: 12) {
                 header
-                prompt(height: min(promptHeight, space.size.height * 0.44))
+                prompt(height: min(promptHeight * fontScale, space.size.height * 0.46))
                 if paused {
                     Label(camera.state == .paused
                           ? "En pause. Le texte attend et l'enregistrement est suspendu."
@@ -202,7 +208,9 @@ struct FilmingView: View {
     }
 
     private func prompt(height: Double) -> some View {
-        VStack(spacing: 0) {
+        let readingInset = max(26, height * 0.26)
+        let target = (lineOffsets[follower.activeLine] ?? 0) - readingInset
+        return VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: follower.isFinished ? "checkmark.circle.fill" : "waveform")
                     .foregroundStyle(Palette.accent)
@@ -225,25 +233,40 @@ struct FilmingView: View {
                 .padding(.horizontal, 15)
                 .accessibilityHidden(true)
 
-            ScrollViewReader { scroll in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(follower.lines) { line in
-                            scriptLine(line).id(line.id)
-                        }
-                    }
-                    .padding(.horizontal, 15)
-                    .padding(.top, 14)
-                    .padding(.bottom, max(24, height - 48))
-                }
-                .frame(height: height)
-                .defaultScrollAnchor(.top)
-                .onChange(of: follower.activeLine) { _, index in
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) {
-                        scroll.scrollTo(index, anchor: .top)
+            // La lecture se cale à une hauteur fixe : le texte défile sous l'œil,
+            // et la ligne à lire ne remonte jamais ni ne descend.
+            ZStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(follower.lines) { line in
+                        scriptLine(line)
+                            .id(line.id)
+                            .background {
+                                GeometryReader { geo in
+                                    Color.clear.preference(key: LineOffsetsKey.self,
+                                                          value: [line.id: geo.frame(in: .named("promptLines")).minY])
+                                }
+                            }
                     }
                 }
+                .coordinateSpace(name: "promptLines")
+                .padding(.horizontal, 15)
+                .fixedSize(horizontal: false, vertical: true)
+                .offset(y: -(target + dragOffset))
+                .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: target)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: height, alignment: .top)
+            .clipped()
+            .mask {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.04),
+                    .init(color: .black, location: 0.88),
+                    .init(color: .clear, location: 1)
+                ], startPoint: .top, endPoint: .bottom)
+            }
+            .gesture(dragGesture())
         }
         .background(.black.opacity(0.88), in: .rect(cornerRadius: 21))
         .overlay {
@@ -251,18 +274,41 @@ struct FilmingView: View {
                 .strokeBorder(.white.opacity(0.15))
                 .allowsHitTesting(false)
         }
+        .onPreferenceChange(LineOffsetsKey.self) { offsets in
+            lineOffsets = offsets
+        }
+    }
+
+    /// Déplacement du doigt : le texte suit, puis se recale sur la ligne la plus proche.
+    private func dragGesture() -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                dragOffset = value.translation.height
+            }
+            .onEnded { _ in
+                let dragged = dragOffset
+                dragOffset = 0
+                guard !lineOffsets.isEmpty else { return }
+                let anchor = (lineOffsets[follower.activeLine] ?? 0) + dragged
+                let nearest = lineOffsets.min { lhs, rhs in
+                    abs(lhs.value - anchor) < abs(rhs.value - anchor)
+                }?.key
+                if let nearest {
+                    follower.seek(toLine: nearest)
+                }
+            }
     }
 
     private func scriptLine(_ line: ScriptFollower.Line) -> some View {
         let current = line.id == follower.activeLine
         let parts = line.split(at: follower.position)
         var read = AttributedString(parts.read)
-        read.foregroundColor = Palette.muted
+        read.foregroundColor = Color.white.opacity(0.22)
         var unread = AttributedString(parts.unread)
-        unread.foregroundColor = current ? Color.white : Palette.muted
+        unread.foregroundColor = current ? Color.white : Color.white.opacity(0.52)
 
         return Text(read + unread)
-            .font(.title2.weight(current ? .semibold : .medium))
+            .font(.system(size: baseFontSize * fontScale, weight: current ? .semibold : .medium))
             .lineSpacing(3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 12)
@@ -473,5 +519,14 @@ struct FilmingView: View {
         await voice.start { text, isFinal in
             follower.update(text, isFinal: isFinal)
         }
+    }
+}
+
+/// Position verticale de chaque ligne de texte, mesurée pendant la mise en page.
+private struct LineOffsetsKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] { [:] }
+
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }

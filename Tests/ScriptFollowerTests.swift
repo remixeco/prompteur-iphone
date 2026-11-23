@@ -4,7 +4,20 @@ struct ScriptFollowerTests {
         followsRevisedFrenchTranscripts()
         skipsOnlyWithNearbyEvidence()
         resumesFromManualPosition()
+        keepsSentencesWhole()
         print("ScriptFollower: tous les tests passent.")
+    }
+
+    private static func keepsSentencesWhole() {
+        let short = ScriptFollower.displayChunks("Bonjour. Je viens te montrer une idée.")
+        precondition(short.count == 1, "Deux phrases courtes doivent tenir sur la même ligne.")
+
+        let long = "Une phrase beaucoup trop longue pour tenir sur une seule ligne de lecture, afin de vérifier que le découpage se fait entre deux mots."
+        let pieces = ScriptFollower.displayChunks(long, maxWords: 8)
+        precondition(pieces.count > 1, "Une phrase trop longue doit être coupée.")
+        precondition(pieces.joined() == long, "Le texte doit rester identique après le découpage.")
+        precondition(pieces.allSatisfy { $0.split(whereSeparator: \.isWhitespace).count <= 8 },
+                     "Chaque morceau doit rester court.")
     }
 
     private static func followsRevisedFrenchTranscripts() {

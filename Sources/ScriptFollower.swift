@@ -36,21 +36,96 @@ struct ScriptFollower {
         var lines: [Line] = []
         var words: [String] = []
         for paragraph in script.split(whereSeparator: \.isNewline) {
-            let groups = paragraph.split(whereSeparator: \.isWhitespace)
-            for start in stride(from: 0, to: groups.count, by: 7) {
-                let end = min(start + 6, groups.count - 1)
-                let text = String(paragraph[groups[start].startIndex..<groups[end].endIndex])
-                let ranges = Self.tokenRanges(in: text)
+            for chunk in Self.displayChunks(String(paragraph)) {
+                let ranges = Self.tokenRanges(in: chunk)
                 guard !ranges.isEmpty else { continue }
                 lines.append(Line(
-                    id: lines.count, text: text, startWord: words.count,
+                    id: lines.count, text: chunk, startWord: words.count,
                     wordStarts: ranges.map(\.lowerBound)
                 ))
-                words += ranges.map { Self.normalize(String(text[$0])) }
+                words += ranges.map { Self.normalize(String(chunk[$0])) }
             }
         }
         self.lines = lines
         self.words = words
+    }
+
+    /// Découpe un paragraphe en blocs lisibles.
+    ///
+    /// On ne coupe jamais au milieu d'une phrase : deux phrases courtes peuvent
+    /// tenir sur la même ligne, une phrase longue est coupée entre deux mots.
+    static func displayChunks(_ paragraph: String, maxWords: Int = 12) -> [String] {
+        var units: [String] = []
+        for sentence in Self.sentences(in: paragraph) {
+            let count = Self.tokenRanges(in: sentence).count
+            if count <= maxWords {
+                units.append(sentence)
+            } else {
+                units.append(contentsOf: Self.splitLong(sentence, maxWords: maxWords))
+            }
+        }
+
+        var chunks: [String] = []
+        var current = ""
+        var currentWords = 0
+        for unit in units {
+            let count = Self.tokenRanges(in: unit).count
+            if currentWords > 0, currentWords + count > maxWords {
+                chunks.append(current)
+                current = ""
+                currentWords = 0
+            }
+            current += unit
+            currentWords += count
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks
+    }
+
+    /// Découpe un paragraphe en phrases, en gardant les espaces d'origine.
+    private static func sentences(in paragraph: String) -> [String] {
+        var sentences: [String] = []
+        var current = ""
+        var index = paragraph.startIndex
+
+        while index < paragraph.endIndex {
+            let character = paragraph[index]
+            current.append(character)
+            index = paragraph.index(after: index)
+
+            if ".!?;".contains(character) {
+                while index < paragraph.endIndex,
+                      paragraph[index] == " " || paragraph[index] == "\u{00A0}" {
+                    current.append(paragraph[index])
+                    index = paragraph.index(after: index)
+                }
+                if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+                    sentences.append(current)
+                }
+                current = ""
+            }
+        }
+        if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+            sentences.append(current)
+        }
+        return sentences
+    }
+
+    /// Coupe une phrase trop longue en morceaux de mots, sans perdre le texte.
+    private static func splitLong(_ text: String, maxWords: Int) -> [String] {
+        let ranges = tokenRanges(in: text)
+        guard ranges.count > maxWords else { return [text] }
+
+        var pieces: [String] = []
+        var index = 0
+        while index < ranges.count {
+            let end = min(index + maxWords, ranges.count)
+            let start = ranges[index].lowerBound
+            let stop = end < ranges.count ? ranges[end].lowerBound : text.endIndex
+            pieces.append(String(text[start..<stop]))
+            index = end
+        }
+        return pieces
     }
 
     mutating func seek(toLine index: Int) {

@@ -15,6 +15,20 @@ App iPhone en français pour se filmer avec la caméra avant. Le texte apparaît
 3. Touche **Filmer** et lis le texte. Si tu fais une pause, le texte t’attend. Si tu sautes un passage, tu peux te recaler avec les flèches.
 4. Touche **Arrêter**. La vidéo est ajoutée automatiquement à l’app Photos du téléphone ; les prises restent aussi accessibles dans **Fichiers → Sur mon iPhone → Prompteur → Prises**.
 
+## Lire sans se perdre
+
+Le texte est présenté comme sur un prompteur de studio :
+
+- la ligne que tu lis reste **toujours à la même hauteur** dans la carte, ton œil ne se déplace jamais ;
+- le texte **glisse** doucement sous cette ligne quand tu avances ;
+- ce que tu as déjà dit s’efface en gris clair, ce qui arrive s’affiche en gris plus dense, et la ligne en cours reste blanche avec un trait vert ;
+- les bords de la carte sont en fondu, pour ne pas lire un texte coupé en deux ;
+- le script est découpé **phrase par phrase** : on ne coupe jamais une phrase au milieu.
+
+Tu peux déplacer le texte avec le doigt : il se recale sur la ligne la plus proche. Les flèches font la même chose, ligne par ligne.
+
+Le réglage **Taille du texte** (Petite, Moyenne, Grande), sous le script, change la taille de lecture. La carte s’agrandit avec.
+
 ## Suspendre et reprendre la prise
 
 Le bouton **pause**, à droite du bouton d’enregistrement, suspend **le texte et l’enregistrement**. Le texte se fige, la capture s’arrête, et le bandeau jaune « En pause. Le texte attend et l’enregistrement est suspendu. » le signale. Le chronomètre se fige aussi : il ne compte que le temps réellement filmé.
