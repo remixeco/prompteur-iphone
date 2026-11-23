@@ -300,11 +300,12 @@ struct FilmingView: View {
 
     /// Les anciennes prises, avec le défilement manuel juste au-dessus.
     private var takesAndScroll: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 10) {
             scrollButtons
             iconButton("Dernière prise", symbol: "film") { showingTake = true }
                 .disabled(busyRecording || camera.latestVideo == nil)
         }
+        .frame(width: 66)
     }
 
     private var voiceButton: some View {
