@@ -50,6 +50,7 @@ private struct ScriptEditor: View {
     @FocusState private var editing: Bool
     @State private var filming = false
     @State private var showingTake = false
+    @State private var confirmingClear = false
     @State private var voice: VoiceRecognizer
     @State private var camera: CameraCapture
 
@@ -145,10 +146,46 @@ private struct ScriptEditor: View {
                 TakeView(url: url, note: camera.cutNote)
             }
         }
+        .confirmationDialog("Effacer tout le texte ?", isPresented: $confirmingClear, titleVisibility: .visible) {
+            Button("Effacer tout", role: .destructive) {
+                script = ""
+                editing = false
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Ton script sera supprimé définitivement.")
+        }
     }
 
     private var editor: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Ton texte")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Palette.muted)
+                    .accessibilityHidden(true)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    confirmingClear = true
+                } label: {
+                    Label("Tout effacer", systemImage: "trash")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(script.isEmpty ? Palette.muted : Color(red: 1, green: 0.45, blue: 0.42))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .background(.white.opacity(0.06), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .disabled(script.isEmpty)
+                .opacity(script.isEmpty ? 0.45 : 1)
+                .accessibilityHint("Supprime tout le texte du script")
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
             TextEditor(text: $script)
                 .font(.system(.body, weight: .medium))
                 .lineSpacing(6)
