@@ -184,6 +184,10 @@ enum SilenceCutter {
 
         guard cursor > CMTime.zero else { throw CutterError.cannotExport }
 
+        // L'orientation de la prise doit survivre au montage : sans cette
+        // transformation, la vidéo montée est enregistrée couchée sur le côté.
+        composedVideo.preferredTransform = try await videoTrack.load(.preferredTransform)
+
         try? FileManager.default.removeItem(at: destination)
         guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
             throw CutterError.cannotExport

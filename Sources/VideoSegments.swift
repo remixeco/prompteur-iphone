@@ -48,6 +48,7 @@ enum VideoSegments {
         )
 
         var cursor = CMTime.zero
+        var orientation: CGAffineTransform?
         for segment in usable {
             let asset = AVURLAsset(url: segment)
             guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first,
@@ -61,10 +62,18 @@ enum VideoSegments {
             let range = CMTimeRange(start: videoRange.start, duration: duration)
             try videoTrack.insertTimeRange(range, of: sourceVideo, at: cursor)
             try audioTrack?.insertTimeRange(range, of: sourceAudio, at: cursor)
+            if orientation == nil {
+                orientation = try await sourceVideo.load(.preferredTransform)
+            }
             cursor = CMTimeAdd(cursor, duration)
         }
 
         guard cursor > CMTime.zero else { throw MergeError.cannotCompose }
+
+        // L'orientation de la prise doit survivre au recollage des morceaux.
+        if let orientation {
+            videoTrack.preferredTransform = orientation
+        }
 
         try? FileManager.default.removeItem(at: destination)
         guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
