@@ -11,10 +11,9 @@ final class CameraCapture {
     }
 
     private(set) var state: State = .idle
-    private(set) var latestVideo: URL?
     private(set) var errorMessage: String?
-    /// Résumé du montage de la dernière prise, quand les blancs ont été coupés.
-    private(set) var cutNote: String?
+    /// Résumé de la dernière prise, affiché quelques secondes après l'enregistrement.
+    private(set) var lastTakeNote: String?
     /// Nombre de morceaux dans la prise en cours : 1 tant qu'aucune pause n'a eu lieu.
     private(set) var segmentCount = 0
 
@@ -26,13 +25,6 @@ final class CameraCapture {
 
     init(onAudio: @escaping @Sendable (CMSampleBuffer) -> Void) {
         worker = CaptureWorker(onAudio: onAudio)
-        if let filename = UserDefaults.standard.string(forKey: "latestVideo"),
-           let folder = try? CaptureWorker.takesFolder() {
-            let url = folder.appendingPathComponent(filename)
-            if FileManager.default.fileExists(atPath: url.path) {
-                latestVideo = url
-            }
-        }
     }
 
     func start() async {
@@ -91,6 +83,7 @@ final class CameraCapture {
         guard state == .ready else { return }
         state = .startingRecording
         errorMessage = nil
+        lastTakeNote = nil
         segmentCount = 0
         worker.record { [weak self] event in
             guard let self else { return }
@@ -168,10 +161,23 @@ final class CameraCapture {
             }
         }
 
-        latestVideo = final
-        UserDefaults.standard.set(final.lastPathComponent, forKey: "latestVideo")
-        cutNote = removed > 0 ? Self.describe(removed: removed) : nil
+        do {
+            try await PhotoLibrary.save(final)
+            var note = "Ajoutée à Photos"
+            if removed > 0 {
+                note += " · " + Self.describe(removed: removed)
+            }
+            lastTakeNote = note
+        } catch {
+            lastTakeNote = nil
+            errorMessage = "La vidéo n'a pas pu être ajoutée à Photos. Elle reste dans Fichiers → Prompteur → Prises."
+        }
         settleAfterTake()
+    }
+
+    /// Efface le résumé de la prise une fois qu'il a été affiché.
+    func clearTakeNote() {
+        lastTakeNote = nil
     }
 
     private static func describe(removed: Double) -> String {

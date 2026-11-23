@@ -14,7 +14,6 @@ struct FilmingView: View {
     @State private var follower: ScriptFollower
     @State private var followVoice = true
     @State private var paused = false
-    @State private var showingTake = false
     @State private var startedAt: Date?
     @State private var elapsedBefore = 0.0
     @State private var elapsed = 0.0
@@ -43,7 +42,7 @@ struct FilmingView: View {
 
     /// Le texte suit la voix seulement si la prise n'est pas suspendue.
     private var shouldListen: Bool {
-        followVoice && !paused && cameraReady && scenePhase != .background && !showingTake
+        followVoice && !paused && cameraReady && scenePhase != .background
     }
 
     var body: some View {
@@ -83,6 +82,15 @@ struct FilmingView: View {
                 } else if followVoice, case .failed(let message) = voice.status {
                     notice(message)
                 }
+                if let note = camera.lastTakeNote {
+                    Label(note, systemImage: "photo.badge.checkmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.black.opacity(0.72), in: .capsule)
+                        .transition(.opacity)
+                }
                 controls
             }
             .padding(.horizontal, 18)
@@ -102,8 +110,8 @@ struct FilmingView: View {
                 }
             }
         }
-        .task(id: scenePhase == .background || showingTake) {
-            if scenePhase == .background || showingTake {
+        .task(id: scenePhase == .background) {
+            if scenePhase == .background {
                 camera.stop()
             } else {
                 await camera.start()
@@ -139,16 +147,19 @@ struct FilmingView: View {
             guard let startedAt else { return }
             elapsed = elapsedBefore + Date().timeIntervalSince(startedAt)
         }
+        .task(id: camera.lastTakeNote) {
+            let note = camera.lastTakeNote
+            guard note != nil else { return }
+            try? await Task.sleep(for: .seconds(5))
+            if camera.lastTakeNote == note {
+                camera.clearTakeNote()
+            }
+        }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             voice.stop()
             camera.stop()
-        }
-        .sheet(isPresented: $showingTake) {
-            if let url = camera.latestVideo {
-                TakeView(url: url, note: camera.cutNote)
-            }
         }
     }
 
@@ -278,7 +289,7 @@ struct FilmingView: View {
             if cameraReady {
                 ZStack(alignment: .bottom) {
                     HStack(alignment: .bottom) {
-                        takesAndVoice
+                        voiceButton
                         Spacer(minLength: 8)
                         pauseButton
                     }
@@ -295,16 +306,6 @@ struct FilmingView: View {
                     .font(.footnote)
             }
         }
-    }
-
-    /// Les anciennes prises, avec le réglage du texte automatique juste au-dessus.
-    private var takesAndVoice: some View {
-        VStack(spacing: 10) {
-            voiceButton
-            iconButton("Dernière prise", symbol: "film") { showingTake = true }
-                .disabled(busyRecording || camera.latestVideo == nil)
-        }
-        .frame(width: 66)
     }
 
     private var recordCaption: some View {

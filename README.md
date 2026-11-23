@@ -13,7 +13,7 @@ App iPhone en français pour se filmer avec la caméra avant. Le texte apparaît
 1. Remplace le script d’exemple par ton texte et touche **Ouvrir la caméra**. Le bouton **Tout effacer**, en haut de la carte du texte, vide tout le script d’un geste après confirmation.
 2. Autorise la caméra et le micro. Attends le statut **À l’écoute** avant de lire. Au premier lancement, iOS peut demander du temps et une connexion pour télécharger le modèle de reconnaissance du français. La reconnaissance s’exécute ensuite sur l’iPhone.
 3. Touche **Filmer** et lis le texte. Si tu fais une pause, le texte t’attend. Si tu sautes un passage, tu peux te recaler avec les flèches.
-4. Touche **Arrêter** puis ouvre **Dernière prise** pour regarder la vidéo, la partager ou l’ajouter à Photos. Les prises sont aussi accessibles dans **Fichiers → Sur mon iPhone → Prompteur → Prises**.
+4. Touche **Arrêter**. La vidéo est ajoutée automatiquement à l’app Photos du téléphone ; les prises restent aussi accessibles dans **Fichiers → Sur mon iPhone → Prompteur → Prises**.
 
 ## Suspendre et reprendre la prise
 
@@ -27,7 +27,7 @@ C’est utile quand tu dois t’interrompre — une interruption, une toux, un b
 
 L’option **Couper les blancs**, sous le script, supprime de la vidéo les silences où tu ne parles pas. Elle est désactivée par défaut.
 
-Quand elle est active, la prise est montée à la fin du tournage : les moments trop courts pour être des blancs sont conservés, et une petite marge est gardée autour de la voix pour que les coupes ne claquent pas. La prise brute est toujours conservée à côté, sous le nom `…-brute.mov`, et la version montée sous `…-montée.mov`. La fiche de la prise affiche le temps retiré.
+Quand elle est active, la prise est montée à la fin du tournage : les moments trop courts pour être des blancs sont conservés, et une petite marge est gardée autour de la voix pour que les coupes ne claquent pas. La prise brute est toujours conservée à côté, sous le nom `…-brute.mov`, et la version montée sous `…-montée.mov`. C’est la version montée qui est ajoutée à Photos, et un bandeau indique le temps retiré.
 
 Les morceaux de la prise sont d’abord recollés en un fichier unique, ensuite les blancs sont retirés. Le montage ne touche jamais à l’image.
 

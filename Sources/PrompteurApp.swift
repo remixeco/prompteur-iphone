@@ -1,9 +1,5 @@
-import AVKit
-import CoreTransferable
 import Foundation
-import Photos
 import SwiftUI
-import UniformTypeIdentifiers
 
 @main
 struct PrompteurApp: App {
@@ -49,7 +45,6 @@ private struct ScriptEditor: View {
     @AppStorage(SilenceSettings.minimumKey) private var minimumSilence = SilenceRanges.Settings.default.minimumSilence
     @FocusState private var editing: Bool
     @State private var filming = false
-    @State private var showingTake = false
     @State private var confirmingClear = false
     @State private var voice: VoiceRecognizer
     @State private var camera: CameraCapture
@@ -91,21 +86,6 @@ private struct ScriptEditor: View {
 
                 settingsCard
 
-                if camera.latestVideo != nil {
-                    Button {
-                        showingTake = true
-                    } label: {
-                        HStack {
-                            Label("Dernière prise", systemImage: "film")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .accessibilityHidden(true)
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 24)
@@ -140,11 +120,6 @@ private struct ScriptEditor: View {
         }
         .fullScreenCover(isPresented: $filming) {
             FilmingView(script: script, camera: camera, voice: voice)
-        }
-        .sheet(isPresented: $showingTake) {
-            if let url = camera.latestVideo {
-                TakeView(url: url, note: camera.cutNote)
-            }
         }
         .confirmationDialog("Effacer tout le texte ?", isPresented: $confirmingClear, titleVisibility: .visible) {
             Button("Effacer tout", role: .destructive) {
@@ -289,101 +264,6 @@ private struct ScriptEditor: View {
                 .font(.caption2)
                 .foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-struct TakeView: View {
-    let url: URL
-    var note: String?
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var player: AVPlayer?
-    @State private var saving = false
-    @State private var saved = false
-    @State private var error: String?
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 18) {
-                VideoPlayer(player: player)
-                    .background(.black)
-                    .clipShape(.rect(cornerRadius: 16))
-
-                if let note {
-                    Label(note, systemImage: "scissors")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(Palette.accent)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.center)
-                }
-
-                if let error {
-                    Text(error).foregroundStyle(Palette.muted)
-                }
-
-                Button {
-                    Task { await saveToPhotos() }
-                } label: {
-                    Label(saved ? "Ajoutée à Photos" : "Enregistrer dans Photos",
-                          systemImage: saved ? "checkmark" : "square.and.arrow.down")
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(saving || saved)
-
-                ShareLink(item: TakeFile(url: url), preview: SharePreview("Vidéo Prompteur")) {
-                    Label("Partager la vidéo", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(20)
-            .background(Palette.background)
-            .navigationTitle("Dernière prise")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Fermer") { dismiss() }
-                }
-            }
-        }
-        .onAppear { player = AVPlayer(url: url) }
-        .onDisappear {
-            player?.pause()
-            player = nil
-        }
-    }
-
-    private func saveToPhotos() async {
-        guard !saving, !saved else { return }
-        saving = true
-        error = nil
-        defer { saving = false }
-
-        let access = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-        guard access == .authorized || access == .limited else {
-            error = "Autorise l’ajout dans Photos depuis les Réglages, ou partage la vidéo."
-            return
-        }
-
-        do {
-            try await PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
-            }
-            saved = true
-        } catch {
-            self.error = "L’ajout à Photos a échoué. Tu peux réessayer ou partager la vidéo."
-        }
-    }
-}
-
-private struct TakeFile: Transferable {
-    let url: URL
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .quickTimeMovie) { take in
-            SentTransferredFile(take.url)
         }
     }
 }
