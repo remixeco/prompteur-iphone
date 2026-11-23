@@ -1,4 +1,5 @@
 import AVFoundation
+import Foundation
 import Observation
 import SwiftUI
 
@@ -14,6 +15,8 @@ final class CameraCapture {
     private(set) var errorMessage: String?
     /// Résumé de la dernière prise, affiché quelques secondes après l'enregistrement.
     private(set) var lastTakeNote: String?
+    /// Rotation de l'aperçu, mise à jour selon l'orientation de l'appareil.
+    private(set) var previewRotationAngle: CGFloat = 90
     /// Nombre de morceaux dans la prise en cours : 1 tant qu'aucune pause n'a eu lieu.
     private(set) var segmentCount = 0
 
@@ -25,6 +28,14 @@ final class CameraCapture {
 
     init(onAudio: @escaping @Sendable (CMSampleBuffer) -> Void) {
         worker = CaptureWorker(onAudio: onAudio)
+        worker.onRotation = { [weak self] angle in
+            self?.previewRotationAngle = angle
+        }
+    }
+
+    /// La couche d'aperçu est prête : la rotation peut suivre l'appareil.
+    func attachPreviewLayer(_ layer: CALayer) {
+        worker.attachPreviewLayer(layer)
     }
 
     func start() async {
@@ -222,11 +233,20 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
     private let movie = AVCaptureMovieFileOutput()
     private let audio = AVCaptureAudioDataOutput()
     private let onAudio: @Sendable (CMSampleBuffer) -> Void
+    var onRotation: (@MainActor @Sendable (CGFloat) -> Void)?
     private var configured = false
     private var wantsSession = false
     private var recording: (@MainActor @Sendable (RecordingEvent) -> Void)?
     private var mode: Mode = .idle
     private var segments: [URL] = []
+    /// Suit l'orientation de l'appareil pour tenir la vidéo dans le bon sens.
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var captureObservation: NSKeyValueObservation?
+    private var previewObservation: NSKeyValueObservation?
+    private var previewLayer: CALayer?
+    private var videoDevice: AVCaptureDevice?
+    /// Dernier angle connu, celui qui sera appliqué au début de la prochaine prise.
+    private var captureAngle: CGFloat = 90
 
     init(onAudio: @escaping @Sendable (CMSampleBuffer) -> Void) {
         self.onAudio = onAudio
@@ -279,6 +299,9 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
             self.segments = []
             self.recording = completion
             self.mode = .recording
+            // L'orientation est figée pour toute la prise : la vidéo ne doit pas
+            // tourner au milieu du plan si tu bouges le téléphone.
+            self.setConnectionAngle(self.captureAngle)
             self.startSegment(in: folder)
         }
     }
@@ -315,6 +338,57 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         }
     }
 
+    /// L'aperçu existe : on peut calculer les angles de rotation.
+    func attachPreviewLayer(_ layer: CALayer) {
+        let boxed = UncheckedSendable(layer)
+        queue.async {
+            self.previewLayer = boxed.value
+            self.startRotationCoordinator()
+        }
+    }
+
+    /// Observe l'orientation de l'appareil et met à jour les angles de rotation.
+    private func startRotationCoordinator() {
+        guard let device = videoDevice else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+        rotationCoordinator = coordinator
+
+        captureObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture,
+                                                 options: [.new]) { [weak self] _, change in
+            guard let angle = change.newValue, let self else { return }
+            let queue = self.queue
+            queue.async { [weak self] in
+                self?.applyCaptureRotation(angle)
+            }
+        }
+        previewObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview,
+                                                 options: [.new]) { [weak self] _, change in
+            guard let angle = change.newValue else { return }
+            Task { @MainActor in
+                self?.onRotation?(angle)
+            }
+        }
+
+        applyCaptureRotation(coordinator.videoRotationAngleForHorizonLevelCapture)
+        let preview = coordinator.videoRotationAngleForHorizonLevelPreview
+        Task { @MainActor in
+            self.onRotation?(preview)
+        }
+    }
+
+    /// Note l'angle courant et l'applique quand aucune prise n'est en cours.
+    private func applyCaptureRotation(_ angle: CGFloat) {
+        captureAngle = angle
+        guard mode == .idle else { return }
+        setConnectionAngle(angle)
+    }
+
+    private func setConnectionAngle(_ angle: CGFloat) {
+        guard let connection = movie.connection(with: .video),
+              connection.isVideoRotationAngleSupported(angle) else { return }
+        connection.videoRotationAngle = angle
+    }
+
     private func startSegment(in folder: URL) {
         let file = folder.appendingPathComponent("Morceau-\(UUID().uuidString).mov")
         movie.startRecording(to: file, recordingDelegate: self)
@@ -326,6 +400,8 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         let files = segments
         segments = []
         mode = .idle
+        // La prise est finie : la vidéo reprend l'orientation de l'instant.
+        setConnectionAngle(captureAngle)
         if !wantsSession, session.isRunning {
             session.stopRunning()
         }
@@ -355,12 +431,15 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
             audio.setSampleBufferDelegate(self, queue: audioQueue)
 
             if let connection = movie.connection(with: .video) {
-                if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+                // L'aperçu et la vidéo restent en miroir selfie, comme dans
+                // l'app Appareil photo. La rotation, elle, suit l'appareil.
                 if connection.isVideoMirroringSupported {
                     connection.automaticallyAdjustsVideoMirroring = false
-                    connection.isVideoMirrored = false
+                    connection.isVideoMirrored = true
                 }
             }
+            videoDevice = videoInput.device
+            startRotationCoordinator()
             configured = true
         } catch {
             session.outputs.forEach { session.removeOutput($0) }
@@ -419,20 +498,26 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
 }
 
 struct CameraPreview: UIViewRepresentable {
-    let session: AVCaptureSession
+    let camera: CameraCapture
+    /// Angle de rotation de l'aperçu, selon l'orientation de l'appareil.
+    var rotationAngle: CGFloat { camera.previewRotationAngle }
 
     func makeUIView(context: Context) -> Preview {
-        Preview()
+        let view = Preview()
+        camera.attachPreviewLayer(view.previewLayer)
+        return view
     }
 
     func updateUIView(_ view: Preview, context: Context) {
         let layer = view.previewLayer
-        if layer.session !== session {
-            layer.session = session
+        if layer.session !== camera.session {
+            layer.session = camera.session
             layer.videoGravity = .resizeAspectFill
         }
         if let connection = layer.connection {
-            if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+            if connection.isVideoRotationAngleSupported(rotationAngle) {
+                connection.videoRotationAngle = rotationAngle
+            }
             if connection.isVideoMirroringSupported {
                 connection.automaticallyAdjustsVideoMirroring = false
                 connection.isVideoMirrored = true
@@ -443,5 +528,15 @@ struct CameraPreview: UIViewRepresentable {
     final class Preview: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
+}
+
+
+/// Enveloppe pour faire passer une valeur non Sendable d'une file à l'autre.
+private struct UncheckedSendable<Value>: @unchecked Sendable {
+    let value: Value
+
+    init(_ value: Value) {
+        self.value = value
     }
 }

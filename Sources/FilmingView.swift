@@ -102,7 +102,7 @@ struct FilmingView: View {
             ZStack {
                 Palette.backdrop
                 if cameraReady {
-                    CameraPreview(session: camera.session)
+                    CameraPreview(camera: camera)
                         .ignoresSafeArea()
                         .accessibilityHidden(true)
                     LinearGradient(colors: [.clear, .black.opacity(0.72)],

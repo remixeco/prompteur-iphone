@@ -37,6 +37,12 @@ Quand tu relances, le texte repart au mot près et l’enregistrement reprend **
 
 C’est utile quand tu dois t’interrompre — une interruption, une toux, un bruit — sans perdre la prise ni la recommencer. Comme la capture est réellement suspendue, ce moment n’existe pas dans la vidéo : il n’y a rien à couper derrière.
 
+## L’orientation de la vidéo
+
+La vidéo est enregistrée **dans le sens où tu tiens le téléphone** : portrait quand tu le tiens en portrait, paysage quand tu le tournes. L’app suit l’orientation de l’appareil en continu, et l’aperçu comme la vidéo restent en miroir selfie, comme dans l’app Appareil photo.
+
+Pendant une prise, l’orientation est figée au moment où tu lances l’enregistrement : la vidéo ne tourne pas au milieu du plan si tu bouges le téléphone.
+
 ## Couper les blancs
 
 L’option **Couper les blancs**, sous le script, supprime de la vidéo les silences où tu ne parles pas. Elle est désactivée par défaut.
