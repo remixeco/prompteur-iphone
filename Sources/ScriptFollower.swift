@@ -136,6 +136,14 @@ struct ScriptFollower {
         trailingWords = []
     }
 
+    /// Revient à un mot précis, pour défaire un bout filmé.
+    mutating func seek(toWord index: Int) {
+        position = max(0, min(index, wordCount))
+        committedPosition = position
+        ignoredCount = max(ignoredCount, heardCount)
+        trailingWords = []
+    }
+
     mutating func reset() { seek(toLine: 0) }
 
     mutating func beginListening() {

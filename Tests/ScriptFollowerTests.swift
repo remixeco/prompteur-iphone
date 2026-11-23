@@ -5,7 +5,21 @@ struct ScriptFollowerTests {
         skipsOnlyWithNearbyEvidence()
         resumesFromManualPosition()
         keepsSentencesWhole()
+        rewindsToAWord()
         print("ScriptFollower: tous les tests passent.")
+    }
+
+    private static func rewindsToAWord() {
+        var follower = ScriptFollower("Une phrase reste ici. Une autre phrase attend.")
+        follower.update("une phrase reste", isFinal: true)
+        let spoken = follower.position
+        precondition(spoken > 0, "Le texte doit avoir avancé.")
+
+        follower.seek(toWord: 0)
+        precondition(follower.position == 0, "Le retour arrière doit revenir au début.")
+
+        follower.seek(toWord: spoken)
+        precondition(follower.position == spoken, "Le retour doit revenir au bon mot.")
     }
 
     private static func keepsSentencesWhole() {

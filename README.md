@@ -35,6 +35,8 @@ Le bouton **pause**, à droite du bouton d’enregistrement, suspend **le texte 
 
 Quand tu relances, le texte repart au mot près et l’enregistrement reprend **dans la même prise**. La capture est écrite par morceaux : chaque pause ferme le morceau en cours et en ouvre un autre. À la fin, les morceaux sont recollés dans l’ordre en un seul fichier, sans trou et sans coupure visible.
 
+Quand tu es en pause, un bouton **poubelle** apparaît à côté : il supprime le dernier bout filmé et ramène le texte en arrière avec lui. Tu peux recommencer ce passage sans refaire toute la prise.
+
 C’est utile quand tu dois t’interrompre — une interruption, une toux, un bruit — sans perdre la prise ni la recommencer. Comme la capture est réellement suspendue, ce moment n’existe pas dans la vidéo : il n’y a rien à couper derrière.
 
 ## L’orientation de la vidéo

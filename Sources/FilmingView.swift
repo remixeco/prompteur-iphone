@@ -16,6 +16,10 @@ struct FilmingView: View {
     @State private var follower: ScriptFollower
     @State private var followVoice = true
     @State private var paused = false
+    /// Position du texte au début de chaque bout filmé, pour pouvoir le défaire.
+    @State private var segmentStarts: [Int] = []
+    /// Position du texte au moment de la pause en cours.
+    @State private var pendingStart = 0
     @State private var startedAt: Date?
     @State private var elapsedBefore = 0.0
     @State private var elapsed = 0.0
@@ -131,6 +135,7 @@ struct FilmingView: View {
             case .recording:
                 startedAt = Date()
             case .paused:
+                segmentStarts.append(pendingStart)
                 if let startedAt {
                     elapsedBefore += Date().timeIntervalSince(startedAt)
                 }
@@ -143,6 +148,7 @@ struct FilmingView: View {
                 elapsedBefore = 0
                 elapsed = 0
                 paused = false
+                segmentStarts = []
             }
         }
         .onReceive(ticker) { _ in
@@ -325,8 +331,12 @@ struct FilmingView: View {
                     HStack(alignment: .bottom) {
                         voiceButton
                         Spacer(minLength: 8)
+                        if camera.state == .paused {
+                            discardButton
+                        }
                         pauseButton
                     }
+                    .animation(.smooth(duration: 0.25), value: camera.state)
 
                     VStack(spacing: 6) {
                         recordButton
@@ -421,6 +431,7 @@ struct FilmingView: View {
     private func togglePause() {
         switch camera.state {
         case .recording:
+            pendingStart = follower.position
             camera.pauseRecording()
             paused = true
         case .paused:
@@ -429,6 +440,13 @@ struct FilmingView: View {
         default:
             break
         }
+    }
+
+    /// Défait le dernier bout filmé : le texte revient en arrière avec lui.
+    private func discardLastSegment() {
+        guard let start = segmentStarts.popLast() else { return }
+        follower.seek(toWord: start)
+        camera.discardLastSegment()
     }
 
     private static func format(_ seconds: TimeInterval) -> String {
@@ -454,6 +472,26 @@ struct FilmingView: View {
         .disabled(camera.state != .recording && camera.state != .paused)
         .opacity(camera.state != .recording && camera.state != .paused ? 0.35 : 1)
         .accessibilityLabel(paused ? "Reprendre la prise" : "Suspendre la prise")
+    }
+
+    /// Supprime le dernier bout filmé, comme un retour arrière.
+    private var discardButton: some View {
+        Button {
+            discardLastSegment()
+        } label: {
+            Image(systemName: "trash")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 50, height: 50)
+                .background(Color.black.opacity(0.55), in: .circle)
+                .overlay {
+                    Circle().strokeBorder(.white.opacity(0.6), lineWidth: 2)
+                }
+        }
+        .buttonStyle(.plain)
+        .transition(.scale.combined(with: .opacity))
+        .accessibilityLabel("Supprimer le dernier bout")
+        .accessibilityHint("Efface la dernière partie filmée et ramène le texte en arrière")
     }
 
     private var recordButton: some View {

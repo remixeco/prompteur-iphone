@@ -111,6 +111,8 @@ final class CameraCapture {
                 if state == .paused {
                     state = .recording
                 }
+            case .segmentDiscarded:
+                break // le texte est remis en arrière par l'écran de tournage
             case .finished(let segments):
                 guard let segments, !segments.isEmpty else {
                     errorMessage = "La vidéo n'a pas pu être enregistrée. Vérifie l'espace libre, puis réessaie."
@@ -135,6 +137,12 @@ final class CameraCapture {
         guard state == .paused else { return }
         state = .recording
         worker.resume()
+    }
+
+    /// Supprime le dernier bout filmé : la reprise repart juste avant.
+    func discardLastSegment() {
+        guard state == .paused else { return }
+        worker.discardLastSegment()
     }
 
     func stopRecording() {
@@ -218,6 +226,8 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         case started
         case paused
         case resumed
+        /// Le dernier bout filmé a été supprimé : le texte doit revenir en arrière.
+        case segmentDiscarded
         case finished([URL]?)
     }
 
@@ -312,6 +322,16 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
             guard self.mode == .recording, self.movie.isRecording else { return }
             self.mode = .paused
             self.movie.stopRecording()
+        }
+    }
+
+    /// Supprime le dernier bout filmé et le signale.
+    func discardLastSegment() {
+        queue.async {
+            guard let last = self.segments.popLast() else { return }
+            try? FileManager.default.removeItem(at: last)
+            guard let callback = self.recording else { return }
+            DispatchQueue.main.async { callback(.segmentDiscarded) }
         }
     }
 
