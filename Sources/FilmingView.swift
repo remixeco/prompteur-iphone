@@ -19,10 +19,6 @@ struct FilmingView: View {
     @State private var startedAt: Date?
     @State private var elapsedBefore = 0.0
     @State private var elapsed = 0.0
-    /// Position de chaque ligne dans le texte, mesurée pour caler la lecture.
-    @State private var lineOffsets: [Int: CGFloat] = [:]
-    /// Décalage manuel pendant un glissement du doigt.
-    @State private var dragOffset: CGFloat = 0
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -208,8 +204,7 @@ struct FilmingView: View {
     }
 
     private func prompt(height: Double) -> some View {
-        let readingInset = max(26, height * 0.26)
-        let target = (lineOffsets[follower.activeLine] ?? 0) - readingInset
+        let readingInset = max(30, height * 0.2)
         return VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: follower.isFinished ? "checkmark.circle.fill" : "waveform")
@@ -233,40 +228,42 @@ struct FilmingView: View {
                 .padding(.horizontal, 15)
                 .accessibilityHidden(true)
 
-            // La lecture se cale à une hauteur fixe : le texte défile sous l'œil,
-            // et la ligne à lire ne remonte jamais ni ne descend.
-            ZStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(follower.lines) { line in
-                        scriptLine(line)
-                            .id(line.id)
-                            .background {
-                                GeometryReader { geo in
-                                    Color.clear.preference(key: LineOffsetsKey.self,
-                                                          value: [line.id: geo.frame(in: .named("promptLines")).minY])
-                                }
+            // La lecture se cale à une hauteur fixe : chaque ligne est précédée d'un
+            // repère invisible de la hauteur de la ligne de lecture. En s'accrochant à
+            // ce repère, le défilement place toujours la ligne active au même endroit,
+            // sans jamais faire remonter le texte vers le haut de la carte.
+            ScrollViewReader { scroll in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(follower.lines) { line in
+                            Group {
+                                Color.clear
+                                    .frame(height: readingInset)
+                                    .id(Self.readingAnchorID(line.id))
+                                scriptLine(line)
+                                    .id(line.id)
                             }
+                        }
                     }
+                    .padding(.horizontal, 15)
+                    .padding(.bottom, max(28, height - readingInset))
                 }
-                .coordinateSpace(name: "promptLines")
-                .padding(.horizontal, 15)
-                .fixedSize(horizontal: false, vertical: true)
-                .offset(y: -(target + dragOffset))
-                .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: target)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: height)
+                .mask {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.04),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1)
+                    ], startPoint: .top, endPoint: .bottom)
+                }
+                .onChange(of: follower.activeLine) { _, index in
+                    scrollToLine(index, in: scroll, animated: true)
+                }
+                .onAppear {
+                    scrollToLine(follower.activeLine, in: scroll, animated: false)
+                }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: height, alignment: .top)
-            .clipped()
-            .mask {
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: 0.04),
-                    .init(color: .black, location: 0.88),
-                    .init(color: .clear, location: 1)
-                ], startPoint: .top, endPoint: .bottom)
-            }
-            .gesture(dragGesture())
         }
         .background(.black.opacity(0.88), in: .rect(cornerRadius: 21))
         .overlay {
@@ -274,29 +271,20 @@ struct FilmingView: View {
                 .strokeBorder(.white.opacity(0.15))
                 .allowsHitTesting(false)
         }
-        .onPreferenceChange(LineOffsetsKey.self) { offsets in
-            lineOffsets = offsets
-        }
     }
 
-    /// Déplacement du doigt : le texte suit, puis se recale sur la ligne la plus proche.
-    private func dragGesture() -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                dragOffset = value.translation.height
-            }
-            .onEnded { _ in
-                let dragged = dragOffset
-                dragOffset = 0
-                guard !lineOffsets.isEmpty else { return }
-                let anchor = (lineOffsets[follower.activeLine] ?? 0) + dragged
-                let nearest = lineOffsets.min { lhs, rhs in
-                    abs(lhs.value - anchor) < abs(rhs.value - anchor)
-                }?.key
-                if let nearest {
-                    follower.seek(toLine: nearest)
-                }
-            }
+    private static func readingAnchorID(_ line: Int) -> String { "reading-\(line)" }
+
+    /// Amène la ligne demandée à la ligne de lecture, sans à-coup.
+    private func scrollToLine(_ index: Int, in scroll: ScrollViewProxy, animated: Bool) {
+        let anchor = Self.readingAnchorID(index)
+        guard animated, !reduceMotion else {
+            scroll.scrollTo(anchor, anchor: .top)
+            return
+        }
+        withAnimation(.smooth(duration: 0.35)) {
+            scroll.scrollTo(anchor, anchor: .top)
+        }
     }
 
     private func scriptLine(_ line: ScriptFollower.Line) -> some View {
@@ -519,14 +507,5 @@ struct FilmingView: View {
         await voice.start { text, isFinal in
             follower.update(text, isFinal: isFinal)
         }
-    }
-}
-
-/// Position verticale de chaque ligne de texte, mesurée pendant la mise en page.
-private struct LineOffsetsKey: PreferenceKey {
-    static var defaultValue: [Int: CGFloat] { [:] }
-
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
     }
 }
