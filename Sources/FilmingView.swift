@@ -20,6 +20,7 @@ struct FilmingView: View {
     @State private var segmentStarts: [Int] = []
     /// Position du texte au moment de la pause en cours.
     @State private var pendingStart = 0
+    @State private var showingEditor = false
     @State private var startedAt: Date?
     @State private var elapsedBefore = 0.0
     @State private var elapsed = 0.0
@@ -97,6 +98,20 @@ struct FilmingView: View {
                         .background(.black.opacity(0.72), in: .capsule)
                         .transition(.opacity)
                 }
+                if camera.lastTakeURL != nil, camera.state == .ready {
+                    Button {
+                        showingEditor = true
+                    } label: {
+                        Label("Ajouter des sous-titres", systemImage: "captions.bubble")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Palette.background)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Palette.accent, in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
                 controls
             }
             .padding(.horizontal, 18)
@@ -168,6 +183,11 @@ struct FilmingView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             voice.stop()
             camera.stop()
+        }
+        .sheet(isPresented: $showingEditor) {
+            if let take = camera.lastTakeURL {
+                TakeEditorView(url: take, note: camera.lastTakeNote)
+            }
         }
     }
 

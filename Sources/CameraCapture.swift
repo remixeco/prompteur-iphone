@@ -15,6 +15,8 @@ final class CameraCapture {
     private(set) var errorMessage: String?
     /// Résumé de la dernière prise, affiché quelques secondes après l'enregistrement.
     private(set) var lastTakeNote: String?
+    /// La dernière prise montée, pour l'ouvrir dans l'écran de montage.
+    private(set) var lastTakeURL: URL?
     /// Rotation de l'aperçu, mise à jour selon l'orientation de l'appareil.
     private(set) var previewRotationAngle: CGFloat = 90
     /// Nombre de morceaux dans la prise en cours : 1 tant qu'aucune pause n'a eu lieu.
@@ -113,6 +115,9 @@ final class CameraCapture {
                 }
             case .segmentDiscarded:
                 break // le texte est remis en arrière par l'écran de tournage
+            case .interrupted:
+                errorMessage = "Le micro a été coupé (notification, appel ou autre app). La prise est en pause : reprends quand c'est bon."
+                if state == .recording { state = .paused }
             case .finished(let segments):
                 guard let segments, !segments.isEmpty else {
                     errorMessage = "La vidéo n'a pas pu être enregistrée. Vérifie l'espace libre, puis réessaie."
@@ -180,11 +185,16 @@ final class CameraCapture {
             }
         }
 
+        lastTakeURL = final
+
         do {
             try await PhotoLibrary.save(final)
             var note = "Ajoutée à Photos"
             if removed > 0 {
                 note += " · " + Self.describe(removed: removed)
+            }
+            if worker.didClip {
+                note += " · ⚠️ le micro a saturé"
             }
             lastTakeNote = note
         } catch {
@@ -228,6 +238,8 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         case resumed
         /// Le dernier bout filmé a été supprimé : le texte doit revenir en arrière.
         case segmentDiscarded
+        /// Le micro a été coupé : la prise est mise en pause.
+        case interrupted
         case finished([URL]?)
     }
 
@@ -257,10 +269,29 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
     private var videoDevice: AVCaptureDevice?
     /// Dernier angle connu, celui qui sera appliqué au début de la prochaine prise.
     private var captureAngle: CGFloat = 90
+    /// Niveau le plus haut entendu sur le micro, en décibels.
+    private var peakLevel: Float = -160
+    /// Date du dernier contrôle du niveau, pour ne pas y toucher à chaque tampon.
+    private var lastGainCheck = Date.distantPast
+    /// Le micro a atteint le maximum : la voix risque de grésiller.
+    private var clippingDetected = false
+    /// Le micro a saturé pendant cette prise.
+    var didClip: Bool { clippingDetected }
 
     init(onAudio: @escaping @Sendable (CMSampleBuffer) -> Void) {
         self.onAudio = onAudio
         super.init()
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: nil,
+            using: { [weak self] note in
+                guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: raw),
+                      type == .began else { return }
+                self?.queue.async { self?.handleInterruption() }
+            }
+        )
     }
 
     func start(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
@@ -294,6 +325,16 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         }
     }
 
+    /// Une interruption (notification, autre app) suspend la prise au lieu de
+    /// l'arrêter net.
+    private func handleInterruption() {
+        guard mode == .recording, movie.isRecording else { return }
+        mode = .paused
+        movie.stopRecording()
+        let callback = recording
+        DispatchQueue.main.async { callback?(.interrupted) }
+    }
+
     /// Ouvre la prise : un premier segment est écrit.
     func record(completion: @escaping @MainActor @Sendable (RecordingEvent) -> Void) {
         queue.async {
@@ -309,6 +350,9 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
             self.segments = []
             self.recording = completion
             self.mode = .recording
+            // La reconnaissance vocale a pu changer le mode audio : on le
+            // remet avant d'enregistrer, sinon le micro sature.
+            self.configureAudioSession()
             // L'orientation est figée pour toute la prise : la vidéo ne doit pas
             // tourner au milieu du plan si tu bouges le téléphone.
             self.setConnectionAngle(self.captureAngle)
@@ -428,6 +472,30 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
         DispatchQueue.main.async { callback?(.finished(files)) }
     }
 
+    /// Prépare la session audio : sans cela, le micro sature et une
+    /// interruption (notification, autre app) arrête l'enregistrement.
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord,
+                                    mode: .videoRecording,
+                                    options: [.defaultToSpeaker, .allowBluetoothHFP])
+            try session.setPreferredIOBufferDuration(0.01)
+            try session.setActive(true)
+        } catch {
+            // Sans session audio active, la capture reste possible mais le micro
+            // peut saturer : on continue quand même.
+        }
+    }
+
+    /// Repère les moments où le micro sature.
+    private func guardAgainstSaturation() {
+        guard Date().timeIntervalSince(lastGainCheck) > 0.4 else { return }
+        lastGainCheck = Date()
+        guard peakLevel > -3 else { return }
+        clippingDetected = true
+    }
+
     private func configure() throws {
         guard let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let microphone = AVCaptureDevice.default(for: .audio) else { throw ConfigurationError.unavailable }
@@ -460,6 +528,7 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
             }
             videoDevice = videoInput.device
             startRotationCoordinator()
+            configureAudioSession()
             configured = true
         } catch {
             session.outputs.forEach { session.removeOutput($0) }
@@ -477,6 +546,10 @@ private final class CaptureWorker: NSObject, AVCaptureAudioDataOutputSampleBuffe
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         onAudio(sampleBuffer)
+        if let channel = output.connection(with: .audio)?.audioChannels.first {
+            peakLevel = max(peakLevel, channel.peakHoldLevel)
+            guardAgainstSaturation()
+        }
     }
 
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL,

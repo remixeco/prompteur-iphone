@@ -45,6 +45,14 @@ La vidéo est enregistrée **dans le sens où tu tiens le téléphone** : portra
 
 Pendant une prise, l’orientation est figée au moment où tu lances l’enregistrement : la vidéo ne tourne pas au milieu du plan si tu bouges le téléphone.
 
+## Les sous-titres
+
+Après la prise, le bouton **Ajouter des sous-titres** ouvre l’écran de montage.
+
+Un appui sur **Sous-titres** réécoute la prise avec la reconnaissance vocale et retrouve **le mot exact et son moment**. Les sous-titres sont alors gravés dans la vidéo comme sur un prompteur : le mot que tu prononces s’illumine en vert au moment où tu le dis, les autres restent blancs. Un fichier **.srt** est écrit à côté de la vidéo, pour les plateformes qui acceptent les sous-titres séparés.
+
+Les boutons **Musique** et **Visuels** arrivent bientôt.
+
 ## Couper les blancs
 
 L’option **Couper les blancs**, sous le script, supprime de la vidéo les silences où tu ne parles pas. Elle est désactivée par défaut.
